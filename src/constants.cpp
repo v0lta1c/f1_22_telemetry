@@ -623,3 +623,34 @@ std::string getSessionType(uint8_t sessionType) {
         default: return "Unknown";
     }
 }
+
+std::string getConstructorLogoPath(uint8_t constructorId) {
+
+    switch(constructorId) {
+
+        case 0: return "../assets/mercedes.png";
+        case 1: return "../assets/ferrari.png";
+        case 2: return "../assets/redbull.png";
+        case 3: return "../assets/williams.png";
+        case 4: return "../assets/aston_martin.png";
+        case 5: return "../assets/alpine.png";
+        case 6: return "../assets/alpha_tauri.png";
+        case 7: return "../assets/haas.png";
+        case 8: return "../assets/mclaren.png";
+        case 9: return "../assets/alfa_romeo.png";
+        default: return "";
+    }
+}
+
+std::string getTyreImagePath(uint8_t tyreCompound) {
+
+    switch(tyreCompound) {
+
+        case 16: return "../assets/tyre_softs.png";
+        case 17: return "../assets/tyre_mediums.png";
+        case 18: return "../assets/tyre_hards.png";
+        case 7: return "../assets/tyre_inters.png";
+        case 8: return "../assets/tyre_wets.png";
+        default: return "";
+    }
+}

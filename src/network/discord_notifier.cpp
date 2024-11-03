@@ -24,7 +24,7 @@ DiscordNotifier::~DiscordNotifier() {
 }
 
 void DiscordNotifier::sendNotification(const std::string &eventType, const std::string &eventData) {
-    
+
     if (socket_->state() == QAbstractSocket::ConnectedState ||
         socket_->state() == QAbstractSocket::ConnectingState) {
         return;

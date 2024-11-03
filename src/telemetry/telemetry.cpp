@@ -35,6 +35,20 @@ TelemetryReceiver::TelemetryReceiver(QObject *parent) : QObject(parent), listeni
     for (int i=0; i<22; i++) {
         lastLapNumber[i] = 1;
     }
+
+    // Initialize the temp backup variables
+    for (int i=0; i<22; i++) {
+        sectorTimesBackup[i] = {0,0,0};
+        tyresWearBackup[i] = {0,0,0,0};
+        tyreCompound[i] = 0;
+        tyreAgeLaps[i] = 0;
+    }
+
+    sessionStartFlag = false;
+    sessionRunningFlag = false;
+    updateTimer = new QTimer(this);
+
+    connect(updateTimer, &QTimer::timeout, this, &TelemetryReceiver::sendTelemetryData);
 }
 
 void TelemetryReceiver::setServerStarted(bool started) {
@@ -90,10 +104,20 @@ void TelemetryReceiver::processPendingDatagrams() {
                         parsePacket(buffer, &participantData);
                         processParticipantData(participantData);
                     }
+                    else if(packetId == 7) {
+                        PacketCarStatusData carStatusData;
+                        parsePacket(buffer, &carStatusData);
+                        processCarStatusData(carStatusData);
+                    }
                     else if(packetId == 8) {
                         PacketFinalClassificationData finalClassificationData;
                         parsePacket(buffer, &finalClassificationData);
                         processFinalClassificationData(finalClassificationData);
+                    }
+                    else if(packetId == 10) {
+                        PacketCarDamageData carDamageData;
+                        parsePacket(buffer, &carDamageData);
+                        processCarDamageData(carDamageData);
                     }
                     // Additional packet types can be added here
 
@@ -119,9 +143,15 @@ void TelemetryReceiver::parsePacket(const QByteArray &buffer, T *packet) {
 
 void TelemetryReceiver::processMotionData(const PacketMotionData &data) {
     // Motion data processing here
+
+    // Set the session running flag
+    sessionRunningFlag = true;
 }
 
 void TelemetryReceiver::processSessionData(const PacketSessionData &data) {
+
+    // Set the session running flag
+    sessionRunningFlag = true;
 
     sessionDataBackup = data;
     //std::cout << "Track ID : " << getTrackName(static_cast<int>(data.m_trackId)) << std::endl;
@@ -129,37 +159,77 @@ void TelemetryReceiver::processSessionData(const PacketSessionData &data) {
 
 void TelemetryReceiver::processLapTimeData(const PacketLapTimeData &data) {
     
+    // Set the session running flag
+    sessionRunningFlag = true;
+
     // Store information in a central struct
 
     for(uint8_t i = 0; i < 22; i++) {
 
         const LapData& lapData = data.m_lapData[i];
-        
-        std::array<uint16_t, 3> sectorTimes = {
-            lapData.m_sector1TimeInMS,
-            lapData.m_sector2TimeInMS,
-            static_cast<uint16_t>(lapData.m_currentLapTimeInMS - lapData.m_sector1TimeInMS - lapData.m_sector2TimeInMS)
-        };
 
-        driverData[i].addLapTimeData(lapData.m_carPosition, lapData.m_currentLapNum);
+        // Update the storage struct with the necessary lap data information
+        driverData[i].addLapTimeData(lapData.m_carPosition, lapData.m_currentLapNum, lapData.m_lastLapTimeInMS, 
+                                     lapData.m_pitStatus, lapData.m_numPitStops, lapData.m_penalties);
         
         // Detect if the lap changed and perform necessary operations
+        // DETECTS LAP CHANGE - IMPORTANT STUFF TO KEEP IN MIND 
+        // Anything to be checked or updated on lap change HAS to go here to prevent a landslide
         if (driverData[i].currentLapNum != lastLapNumber[i]) {
             
-            std::cout << "CURRENT LAP NUM:" << (int)driverData[i].currentLapNum << "LAST LAP NUM: " << (int)lastLapNumber[i] << std::endl;
-            std::cout << "Lap Changed for driver " << driverData[i].driverName << "on index " << (int)i << std::endl;
+            // Calculate the sector times
+            std::array<uint16_t, 3> sectorTimes = {
+                sectorTimesBackup[i][0],
+                sectorTimesBackup[i][1],
+                static_cast<uint16_t>(lapData.m_lastLapTimeInMS - sectorTimesBackup[i][0] - sectorTimesBackup[i][1])
+            };
+
+            uint32_t bestLapTime;
+            // Check for the best lap time
+
+            // If the first lap just completed set it as the best lap time
+            if (driverData[i].currentLapNum == 2) {
+                bestLapTime = driverData[i].lastLapTime;
+            }
+            else {
+
+                // If the last lap was faster than the current lap, set it as the best
+                if (driverData[i].bestLapTime > driverData[i].lastLapTime) {
+                    bestLapTime = driverData[i].lastLapTime;
+                }
+                // If not then no need to change anything
+                else {
+                    bestLapTime = driverData[i].bestLapTime;
+                }
+            }
+            
+
+            driverData[i].onLapChangeDataUpdate(lapData.m_lastLapTimeInMS, sectorTimes, bestLapTime, tyresWearBackup[i], ersDeployed[i]);
+            //std::cout << "CURRENT LAP NUM:" << (int)driverData[i].currentLapNum << "LAST LAP NUM: " << (int)lastLapNumber[i] << std::endl;
+            //std::cout << "Lap Changed for driver " << driverData[i].driverName << "on index " << (int)i << std::endl;
             lastLapNumber[i] = driverData[i].currentLapNum;
         }
+        
+        // Update sector times in a temp variable for storage
+        sectorTimesBackup[i] = {
+            lapData.m_sector1TimeInMS,
+            lapData.m_sector2TimeInMS,
+            static_cast<uint16_t>(lapData.m_lastLapTimeInMS - lapData.m_sector1TimeInMS - lapData.m_sector2TimeInMS)
+        };
     }
 }
 
 void TelemetryReceiver::processEventData(const PacketEventData &data) {
+
+    // Set the session running flag
+    sessionRunningFlag = true;
     
     //std::cout << "EVENT STRING CODE: " << std::string(reinterpret_cast<const char*>(data.m_eventStringCode), 4) << std::endl;
     
     // Event handling for when Session Starts
     if( std::string(reinterpret_cast<const char*>(data.m_eventStringCode)) == "SSTA") {
 
+        sessionStartFlag = true;
         // Clear the driverData struct when a new session starts
         for ( int i = 0; i < 22; i++) {
             driverData[i].clearData();
@@ -168,6 +238,9 @@ void TelemetryReceiver::processEventData(const PacketEventData &data) {
 }
 
 void TelemetryReceiver::processParticipantData(const PacketParticipantData &data) {
+
+    // Set the session running flag
+    sessionRunningFlag = true;
     
     // Store information in a central struct
 
@@ -181,7 +254,25 @@ void TelemetryReceiver::processParticipantData(const PacketParticipantData &data
     }
 }
 
+void TelemetryReceiver::processCarStatusData(const PacketCarStatusData &data) {
+
+    // Set the session running flag
+    sessionRunningFlag = true;
+    
+    for (int i = 0; i < 22; i++) {
+
+        tyreCompound[i] = data.m_carStatusData[i].m_visualTyreCompound;
+        tyreAgeLaps[i] = data.m_carStatusData[i].m_tyresAgeLaps;
+        ersDeployed[i] = data.m_carStatusData[i].m_ersDeployedThisLap;
+        
+        driverData[i].addCarStatusData(tyreCompound[i], tyreAgeLaps[i]);
+    }
+}
+
 void TelemetryReceiver::processFinalClassificationData(const PacketFinalClassificationData &data) {
+
+    // Set the session running flag
+    sessionRunningFlag = true;
 
     // We use a flag to keep track of final classification data's transmission
     // because the packet is transmitted twice at the end of the session
@@ -219,6 +310,7 @@ void TelemetryReceiver::processFinalClassificationData(const PacketFinalClassifi
             nlohmann::json jObject;
             jObject["position"] = classificationData.m_position;
             jObject["name"] = driverData[i].driverName;
+            jObject["constructor"] = getTeamName(driverData[i].constructor);
             jObject["total_time"] = formatTimeFromSeconds(classificationData.m_totalRaceTime);
             jObject["best_lap_time"] = formatTimeFromMilliseconds_32(classificationData.m_bestLapTimeInMS);
             jObject["penalties_time"] = classificationData.m_penaltiesTime;
@@ -235,6 +327,8 @@ void TelemetryReceiver::processFinalClassificationData(const PacketFinalClassifi
             FinalRaceData::instance().updateRaceData(jArray.dump());
             discordNotifier->sendNotification("raceData", jArray.dump());
         }
+        sessionStartFlag = false;
+        sessionRunningFlag = false;
     }
     else {
         finalDataPacketArrived = false;
@@ -242,6 +336,49 @@ void TelemetryReceiver::processFinalClassificationData(const PacketFinalClassifi
 
    //nlohmann::json raceData = {{"event", "final_classification"}, {"position", 1}};
     //discordNotifier->sendNotification("RaceComplete", raceData);
+}
+
+void TelemetryReceiver::processCarDamageData(const PacketCarDamageData &data) {
+
+    // Set the session running flag
+    sessionRunningFlag = true;
+
+    for (int i = 0; i < 22; i++) {
+        
+        tyresWearBackup[i] = {
+            data.m_carDamageData[i].m_tyresWear[0],
+            data.m_carDamageData[i].m_tyresWear[1],
+            data.m_carDamageData[i].m_tyresWear[2],
+            data.m_carDamageData[i].m_tyresWear[3]
+        };
+    }
+}
+
+void TelemetryReceiver::startTelemetryUpdates() {
+
+    updateTimer->start(GUI_UPDATE_FREQUENCY);
+}
+
+void TelemetryReceiver::stopTelemetryUpdates() {
+
+    if (updateTimer) {
+        updateTimer->stop();
+    }
+}
+
+void TelemetryReceiver::sendTelemetryData() {
+
+    if ((sessionStartFlag) || (sessionRunningFlag && driverData[0].driverName != "")) {
+
+        std::vector<DriverData> driverDataSend;
+        
+        for (int i = 0; i < 22; i++) {
+
+            driverDataSend.push_back(driverData[i]);
+        }
+    
+        emit telemetryDataUpdated(driverDataSend, sessionDataBackup);
+    }
 }
 
 void TelemetryReceiver::startListening() {

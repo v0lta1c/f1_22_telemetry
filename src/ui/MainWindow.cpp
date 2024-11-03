@@ -80,14 +80,46 @@ void MainWindow::toggleTelemetry() {
         telemetryReceiver->startListening();
         toggleButton->setText("Stop Telemetry");
 
+        telemetryWindow = new TelemetryWindow();
+        connect(telemetryWindow, &TelemetryWindow::captureStopped, this, &MainWindow::onCaptureStopped);
+        //telemetryWindow->setGeometry(100, 100, 800, 600);
+        telemetryWindow->raise();
+        telemetryWindow->activateWindow();
+        telemetryWindow->show();
+        telemetryWindow->setVisible(true);
+        this->hide();
+
+        telemetryReceiver->startTelemetryUpdates();
+        connect(telemetryReceiver, &TelemetryReceiver::telemetryDataUpdated, telemetryWindow, &TelemetryWindow::updateTelemetryWindow);
+
         if(!isServerStarted && startServerCheckBox->isChecked()) {
             server->start();
             isServerStarted = true;
-            discordNotifier->sendNotification("Server Started", nlohmann::json({{"debug", "The server has started and this message was sent using CPP!"}}).dump());
+            //discordNotifier->sendNotification("Server Started", nlohmann::json({{"debug", "The server has started and this message was sent using CPP!"}}).dump());
             telemetryReceiver->setServerStarted(isServerStarted);
         }
         startServerCheckBox->setVisible(false);
         
         isRunning = !isRunning;
     }
+}
+
+void MainWindow::onCaptureStopped() {
+
+    if (telemetryWindow) {
+        telemetryWindow->deleteLater();
+        telemetryWindow = nullptr;
+    }
+    if (isServerStarted) {
+        server->stop();
+        isServerStarted = true;
+        discordNotifier->disconnect();
+        telemetryReceiver->setServerStarted(isServerStarted);
+    }
+    telemetryReceiver->stopListening();
+    toggleButton->setText("Start Telemetry");
+    telemetryReceiver->stopTelemetryUpdates();
+    startServerCheckBox->setVisible(true);
+    isRunning = !isRunning;
+    this->show();
 }

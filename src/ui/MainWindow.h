@@ -10,6 +10,7 @@
 #include "../telemetry/telemetry.h"
 #include "../network/server.h"
 #include "../network/discord_notifier.h"
+#include "TelemetryWindow.h"
 
 class MainWindow : public QMainWindow {
 
@@ -22,6 +23,7 @@ public:
 
 private slots:
     void toggleTelemetry();   // Slot for toggling telemetry on/off
+    void onCaptureStopped();
 
 signals:
     void startServer();
@@ -40,4 +42,6 @@ private:
 
     DiscordNotifier* discordNotifier;
     QThread* notifierThread;
+
+    TelemetryWindow* telemetryWindow = nullptr;
 };

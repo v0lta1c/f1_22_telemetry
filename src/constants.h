@@ -15,6 +15,12 @@ const std::string Webhook_Interstellar = "https://discord.com/api/webhooks/12639
 // IP and Port for the API server
 const int API_PORT = 8000;
 
+// Frequency at which the telemetry gui should update
+// in Milliseconds
+// eg a value of 1000 means 1000ms means 1s
+// i.e. the gui updates every 1 second
+const int GUI_UPDATE_FREQUENCY = 1000;
+
 std::string getTeamName(int teamId);
 std::string getPlayerName(int playerId);
 std::string getTrackName(int trackId);
@@ -28,3 +34,5 @@ std::string getInfringementType(int infringementId);
 
 std::string getResultStatus(uint8_t status);
 std::string getSessionType(uint8_t sessionType);
+std::string getConstructorLogoPath(uint8_t constructorId);
+std::string getTyreImagePath(uint8_t tyreCompound);
