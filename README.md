@@ -17,7 +17,7 @@ A telemetry parser for Codemaster's game F1 22 written in C++
 ## Dependencies
 
 - Qt Framework (Core, Gui, Network, Widgets) 6.8 [https://www.qt.io/download-open-source#contributing]
-- Nhlohmann's Json library [https://github.com/nlohmann/json]
+- Nlohmann's Json library [https://github.com/nlohmann/json]
 
 ## Building/Compiling
 
