@@ -42,6 +42,7 @@ TelemetryReceiver::TelemetryReceiver(QObject *parent) : QObject(parent), listeni
         tyresWearBackup[i] = {0,0,0,0};
         tyreCompound[i] = 0;
         tyreAgeLaps[i] = 0;
+        m_driverFinishedLastLap[i] = false;
     }
 
     sessionStartFlag = false;
@@ -175,8 +176,10 @@ void TelemetryReceiver::processLapTimeData(const PacketLapTimeData &data) {
         // Detect if the lap changed and perform necessary operations
         // DETECTS LAP CHANGE - IMPORTANT STUFF TO KEEP IN MIND 
         // Anything to be checked or updated on lap change HAS to go here to prevent a landslide
-        if (driverData[i].currentLapNum != lastLapNumber[i]) {
-            
+
+        // Check whether the current lap number is different from previous OR check if the driver finished.
+        if (driverData[i].currentLapNum != lastLapNumber[i] || (lapData.m_resultStatus == 3 && !m_driverFinishedLastLap[i]) ) {
+
             // Calculate the sector times
             std::array<uint16_t, 3> sectorTimes = {
                 sectorTimesBackup[i][0],
@@ -208,6 +211,11 @@ void TelemetryReceiver::processLapTimeData(const PacketLapTimeData &data) {
             //std::cout << "CURRENT LAP NUM:" << (int)driverData[i].currentLapNum << "LAST LAP NUM: " << (int)lastLapNumber[i] << std::endl;
             //std::cout << "Lap Changed for driver " << driverData[i].driverName << "on index " << (int)i << std::endl;
             lastLapNumber[i] = driverData[i].currentLapNum;
+
+            // If it was the last lap and the driver finished, update the flag
+            if (lapData.m_resultStatus == 3) {
+                m_driverFinishedLastLap[i] = true;
+            }
         }
         
         // Update sector times in a temp variable for storage
@@ -291,26 +299,28 @@ void TelemetryReceiver::processFinalClassificationData(const PacketFinalClassifi
         jArray.push_back(trackInfo);
     
         // Create a vector for sorting
-        std::vector<FinalClassificationData> classificationEntries;
+        std::vector<std::pair<FinalClassificationData, size_t>> classificationEntries;
 
         // Use the numCars to check how many entries need to be processed
-        for (uint8_t i = 0; i < data.m_numCars; i++) {
-            classificationEntries.push_back(data.m_classficationData[i]);
+        for (size_t i = 0; i < data.m_numCars; i++) {
+            classificationEntries.emplace_back(data.m_classficationData[i], i);
         }
 
         // Sort the data by position
-        std::sort(classificationEntries.begin(), classificationEntries.end(), [](const FinalClassificationData& a, const FinalClassificationData& b) {
-            return a.m_position < b.m_position; // Sort in ascending order
+        std::sort(classificationEntries.begin(), classificationEntries.end(), [](const auto& a, const auto& b) {
+            return a.first.m_position < b.first.m_position; // Sort in ascending order
         });
 
         // Populate the json array with sorted data
-        for (size_t i = 0; i < classificationEntries.size(); i++) {
+        for (const auto& entry : classificationEntries) {
 
-            const auto& classificationData = classificationEntries[i];
+            const auto& classificationData = entry.first;
+            size_t originalIndex = entry.second;
+
             nlohmann::json jObject;
             jObject["position"] = classificationData.m_position;
-            jObject["name"] = driverData[i].driverName;
-            jObject["constructor"] = getTeamName(driverData[i].constructor);
+            jObject["name"] = driverData[originalIndex].driverName;
+            jObject["constructor"] = getTeamName(driverData[originalIndex].constructor);
             jObject["total_time"] = formatTimeFromSeconds(classificationData.m_totalRaceTime);
             jObject["best_lap_time"] = formatTimeFromMilliseconds_32(classificationData.m_bestLapTimeInMS);
             jObject["penalties_time"] = classificationData.m_penaltiesTime;

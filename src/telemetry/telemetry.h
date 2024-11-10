@@ -56,6 +56,7 @@ private:
     // Flags
     bool sessionStartFlag;
     bool sessionRunningFlag;
+    bool m_driverFinishedLastLap[22];
 
     // Temp variables to store and handle lap changes gracefully
     uint8_t lastLapNumber[22];

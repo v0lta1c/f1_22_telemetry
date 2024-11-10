@@ -1,5 +1,5 @@
 #pragma once
-
+/*
 #include <QWidget>
 #include <QVBoxLayout>
 #include <QLabel>
@@ -22,3 +22,4 @@ private:
     QLabel *titleLabel;
     QTableWidget *lapHistoryTable;
 };
+*/
